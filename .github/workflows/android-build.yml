@@ -30,10 +30,12 @@ jobs:
           if [ -f "vite.config.ts" ]; then
             sed -i "s/base: '.*'/base: '.\/'/" vite.config.ts || sed -i "s/plugins: \[/base: '.\/', plugins: \[/" vite.config.ts
           fi
-          # Fix absolute paths in index.html
+          # Fix absolute paths in index.html before build
           sed -i 's/src="\/src/src=".\/src/g' index.html || true
-          sed -i 's/href="\/assets/href=".\/assets/g' index.html || true
           npm run build
+          # Check if dist/index.html has correct paths
+          echo "Checking dist/index.html paths:"
+          grep "src=" dist/index.html || true
       - name: Java
         uses: actions/setup-java@v4
         with:
