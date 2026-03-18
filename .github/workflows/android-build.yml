@@ -25,17 +25,25 @@ jobs:
       - name: Install
         run: npm install --force
       - name: Build
-        run: npm run build
+        run: |
+          # Force relative paths in vite.config.ts if it exists
+          if [ -f "vite.config.ts" ]; then
+            sed -i "s/plugins: \[/base: '.\/', plugins: \[/" vite.config.ts
+          elif [ -f "vite.config.js" ]; then
+            sed -i "s/plugins: \[/base: '.\/', plugins: \[/" vite.config.js
+          fi
+          npm run build
+          echo "Listing dist folder contents:"
+          ls -R dist
       - name: Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '21' # Java 17 থেকে 21 এ আপডেট করা হয়েছে
+          java-version: '21'
       - name: Capacitor Setup
         run: |
-          if [ ! -f "capacitor.config.ts" ] && [ ! -f "capacitor.config.json" ]; then
-            echo '{"appId": "com.smartbakikhata.app", "appName": "Smart Baki Khata", "webDir": "dist"}' > capacitor.config.json
-          fi
+          # Ensure capacitor.config.json exists and points to the correct webDir
+          echo '{"appId": "com.smartbakikhata.app", "appName": "Smart Baki Khata", "webDir": "dist", "server": {"androidScheme": "https"}}' > capacitor.config.json
           rm -rf android
           npx cap add android
           npx cap sync android
