@@ -15,16 +15,20 @@ jobs:
 
       - name: Unzip Project
         run: |
-          if [ -f *.zip ]; then
+          if ls *.zip 1> /dev/null 2>&1; then
             echo "ZIP file found, unzipping..."
             unzip *.zip -d temp_folder
-            # Move files to root
-            if [ $(ls -1 temp_folder | wc -l) -eq 1 ] && [ -d temp_folder/* ]; then
-              mv temp_folder/*/* .
-            else
-              mv temp_folder/* .
+            # package.json কোথায় আছে তা খুঁজে বের করা
+            PKG_PATH=$(find temp_folder -name "package.json" | head -n 1)
+            if [ -z "$PKG_PATH" ]; then
+              echo "Error: package.json not found in ZIP"
+              exit 1
             fi
-            rm -rf temp_folder
+            BASE_DIR=$(dirname "$PKG_PATH")
+            cp -rn "$BASE_DIR"/* .
+            rm -rf temp_folder *.zip
+          else
+            echo "No ZIP file found, using checked out files."
           fi
 
       - name: Setup Node.js
@@ -45,7 +49,13 @@ jobs:
           java-version: '17'
 
       - name: Sync Capacitor
-        run: npx cap sync android
+        run: |
+          # যদি অ্যান্ড্রয়েড ফোল্ডার না থাকে তবে তৈরি করা
+          if [ ! -d "android" ]; then
+            echo "Android folder missing, adding it..."
+            npx cap add android
+          fi
+          npx cap sync android
 
       - name: Build APK
         run: |
