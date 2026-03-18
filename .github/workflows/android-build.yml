@@ -1,93 +1,50 @@
 name: Build Android APK
-
 on:
   push:
     branches: [ main, master ]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Source
+      - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Unzip and Prepare
+      - name: Unzip
         run: |
-          ZIP_FILE=$(ls *.zip | head -n 1)
-          if [ -n "$ZIP_FILE" ]; then
-            echo "Unzipping $ZIP_FILE..."
-            unzip -o "$ZIP_FILE" -d temp_dir
-            # package.json ফাইলটি কোথায় আছে তা খুঁজে বের করা
-            ROOT_DIR=$(find temp_dir -name "package.json" -exec dirname {} \; | head -n 1)
-            if [ -n "$ROOT_DIR" ]; then
-              echo "Project root found at: $ROOT_DIR"
-              cp -af "$ROOT_DIR"/. .
-            else
-              echo "Error: package.json not found in ZIP."
-              exit 1
-            fi
-            rm -rf temp_dir "$ZIP_FILE"
+          ZIP=$(ls *.zip | head -1)
+          if [ -n "$ZIP" ]; then
+            unzip -o "$ZIP" -d tmp
+            SRC=$(find tmp -name "package.json" -exec dirname {} \; | head -1)
+            cp -af "$SRC"/. .
+            rm -rf tmp "$ZIP"
           fi
-          ls -la
-
-      - name: Setup Node.js
+      - name: Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-
-      - name: Install Dependencies
+      - name: Install
         run: npm install --force
-
-      - name: Build Web Assets
+      - name: Build
         run: npm run build
-
-      - name: Setup Java
+      - name: Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
-
-      - name: Sync Capacitor
+      - name: Capacitor
         run: |
           if [ ! -f "capacitor.config.ts" ] && [ ! -f "capacitor.config.json" ]; then
             echo '{"appId": "com.smartbakikhata.app", "appName": "Smart Baki Khata", "webDir": "dist"}' > capacitor.config.json
           fi
-          if [ ! -d "android" ]; then
-            npx cap add android
-          fi
+          [ -d "android" ] || npx cap add android
           npx cap sync android
-
-      - name: Build APK
+      - name: APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
-
-      - name: Upload APK
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk          if [ ! -f "capacitor.config.ts" ] && [ ! -f "capacitor.config.json" ]; then
-            echo '{"appId": "com.smartbakikhata.app", "appName": "Smart Baki Khata", "webDir": "dist"}' > capacitor.config.json
-          fi
-          # যদি অ্যান্ড্রয়েড ফোল্ডার না থাকে তবে তৈরি করা
-          if [ ! -d "android" ]; then
-            npx cap add android
-          fi
-          npx cap sync android
-
-      - name: Build APK
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk        with:
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
