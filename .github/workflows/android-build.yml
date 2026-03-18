@@ -26,15 +26,14 @@ jobs:
         run: npm install --force
       - name: Build
         run: |
-          # Force relative paths in vite.config.ts if it exists
+          # Force relative paths in vite.config.ts
           if [ -f "vite.config.ts" ]; then
-            sed -i "s/plugins: \[/base: '.\/', plugins: \[/" vite.config.ts
-          elif [ -f "vite.config.js" ]; then
-            sed -i "s/plugins: \[/base: '.\/', plugins: \[/" vite.config.js
+            sed -i "s/base: '.*'/base: '.\/'/" vite.config.ts || sed -i "s/plugins: \[/base: '.\/', plugins: \[/" vite.config.ts
           fi
+          # Fix absolute paths in index.html
+          sed -i 's/src="\/src/src=".\/src/g' index.html || true
+          sed -i 's/href="\/assets/href=".\/assets/g' index.html || true
           npm run build
-          echo "Listing dist folder contents:"
-          ls -R dist
       - name: Java
         uses: actions/setup-java@v4
         with:
@@ -42,7 +41,6 @@ jobs:
           java-version: '21'
       - name: Capacitor Setup
         run: |
-          # Ensure capacitor.config.json exists and points to the correct webDir
           echo '{"appId": "com.smartbakikhata.app", "appName": "Smart Baki Khata", "webDir": "dist", "server": {"androidScheme": "https"}}' > capacitor.config.json
           rm -rf android
           npx cap add android
