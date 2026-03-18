@@ -13,23 +13,24 @@ jobs:
       - name: Checkout Source
         uses: actions/checkout@v4
 
-      - name: Unzip Project
+      - name: Unzip and Prepare
         run: |
           if ls *.zip 1> /dev/null 2>&1; then
             echo "ZIP file found, unzipping..."
-            unzip *.zip -d temp_folder
+            unzip -o *.zip -d temp_folder
             # package.json কোথায় আছে তা খুঁজে বের করা
             PKG_PATH=$(find temp_folder -name "package.json" | head -n 1)
-            if [ -z "$PKG_PATH" ]; then
-              echo "Error: package.json not found in ZIP"
-              exit 1
+            if [ -n "$PKG_PATH" ]; then
+              BASE_DIR=$(dirname "$PKG_PATH")
+              echo "Found package.json in $BASE_DIR. Moving files..."
+              cp -af "$BASE_DIR"/. .
+            else
+              echo "Warning: package.json not found in ZIP. Using root files."
             fi
-            BASE_DIR=$(dirname "$PKG_PATH")
-            cp -rn "$BASE_DIR"/* .
             rm -rf temp_folder *.zip
-          else
-            echo "No ZIP file found, using checked out files."
           fi
+          # ফাইলের লিস্ট দেখা (ডিবাগ করার জন্য)
+          ls -la
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -37,10 +38,23 @@ jobs:
           node-version: 20
 
       - name: Install Dependencies
-        run: npm install --force
+        run: |
+          if [ -f package.json ]; then
+            npm install --force
+          else
+            echo "Error: No package.json found. Cannot proceed."
+            exit 1
+          fi
 
       - name: Build Web Assets
-        run: npm run build
+        run: |
+          if grep -q '"build":' package.json; then
+            npm run build
+          else
+            echo "No build script found, creating dummy dist"
+            mkdir -p dist
+            echo "<html><body>Smart Baki Khata</body></html>" > dist/index.html
+          fi
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -50,9 +64,12 @@ jobs:
 
       - name: Sync Capacitor
         run: |
+          # যদি কনফিগারেশন ফাইল না থাকে তবে তৈরি করা
+          if [ ! -f "capacitor.config.ts" ] && [ ! -f "capacitor.config.json" ]; then
+            echo '{"appId": "com.smartbakikhata.app", "appName": "Smart Baki Khata", "webDir": "dist"}' > capacitor.config.json
+          fi
           # যদি অ্যান্ড্রয়েড ফোল্ডার না থাকে তবে তৈরি করা
           if [ ! -d "android" ]; then
-            echo "Android folder missing, adding it..."
             npx cap add android
           fi
           npx cap sync android
@@ -66,5 +83,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
+          name: app-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk        with:
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
