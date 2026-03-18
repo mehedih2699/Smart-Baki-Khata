@@ -30,14 +30,12 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: '21' # Java 17 থেকে 21 এ আপডেট করা হয়েছে
       - name: Capacitor Setup
         run: |
-          # কনফিগারেশন ফাইল না থাকলে তৈরি করা
           if [ ! -f "capacitor.config.ts" ] && [ ! -f "capacitor.config.json" ]; then
             echo '{"appId": "com.smartbakikhata.app", "appName": "Smart Baki Khata", "webDir": "dist"}' > capacitor.config.json
           fi
-          # পুরনো অ্যান্ড্রয়েড ফোল্ডার মুছে ফেলে নতুন করে তৈরি করা (যাতে কোনো ফাইল নষ্ট না থাকে)
           rm -rf android
           npx cap add android
           npx cap sync android
