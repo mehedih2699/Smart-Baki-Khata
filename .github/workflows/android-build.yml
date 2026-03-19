@@ -15,6 +15,12 @@ jobs:
           if [ -n "$ZIP" ]; then
             unzip -o "$ZIP" -d tmp
             SRC=$(find tmp -name "package.json" -exec dirname {} \; | head -1)
+            
+            # CRITICAL: Remove the .github folder from the unzipped content 
+            # so it doesn't overwrite this updated workflow!
+            rm -rf "$SRC"/.github
+            
+            # Copy everything else to the root
             cp -af "$SRC"/. .
             rm -rf tmp "$ZIP"
           fi
@@ -32,7 +38,10 @@ jobs:
           fi
           # Fix absolute paths in index.html before build
           sed -i 's/src="\/src/src=".\/src/g' index.html || true
+          
+          export GEMINI_API_KEY="dummy_key"
           npm run build
+          
           # Check if dist/index.html has correct paths
           echo "Checking dist/index.html paths:"
           grep "src=" dist/index.html || true
@@ -43,9 +52,31 @@ jobs:
           java-version: '21'
       - name: Capacitor Setup
         run: |
-          echo '{"appId": "com.smartbakikhata.app", "appName": "Smart Baki Khata", "webDir": "dist", "server": {"androidScheme": "https"}}' > capacitor.config.json
+          # Ensure resources folder exists
+          if [ ! -d "resources" ]; then
+            mkdir resources
+          fi
+          
+          # Remove existing android folder to ensure a clean build
           rm -rf android
+          
+          # Add android platform
           npx cap add android
+          
+          # Generate assets using the full package name for reliability
+          if [ -f "resources/icon.png" ]; then
+            echo "Icon source found. Preparing adaptive icons..."
+            cp resources/icon.png resources/icon-only.png
+            cp resources/icon.png resources/icon-foreground.png
+            cp resources/icon.png resources/icon-background.png
+            npx @capacitor/assets generate --android --icon
+          fi
+          
+          if [ -f "resources/splash.png" ]; then
+            npx @capacitor/assets generate --android --splash
+          fi
+          
+          # Sync changes to android platform
           npx cap sync android
       - name: APK Build
         run: |
