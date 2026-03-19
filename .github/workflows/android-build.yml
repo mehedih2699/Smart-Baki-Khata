@@ -15,12 +15,7 @@ jobs:
           if [ -n "$ZIP" ]; then
             unzip -o "$ZIP" -d tmp
             SRC=$(find tmp -name "package.json" -exec dirname {} \; | head -1)
-            
-            # CRITICAL: Remove the .github folder from the unzipped content 
-            # so it doesn't overwrite this updated workflow!
             rm -rf "$SRC"/.github
-            
-            # Copy everything else to the root
             cp -af "$SRC"/. .
             rm -rf tmp "$ZIP"
           fi
@@ -32,19 +27,12 @@ jobs:
         run: npm install --force
       - name: Build
         run: |
-          # Force relative paths in vite.config.ts
           if [ -f "vite.config.ts" ]; then
             sed -i "s/base: '.*'/base: '.\/'/" vite.config.ts || sed -i "s/plugins: \[/base: '.\/', plugins: \[/" vite.config.ts
           fi
-          # Fix absolute paths in index.html before build
           sed -i 's/src="\/src/src=".\/src/g' index.html || true
-          
           export GEMINI_API_KEY="dummy_key"
           npm run build
-          
-          # Check if dist/index.html has correct paths
-          echo "Checking dist/index.html paths:"
-          grep "src=" dist/index.html || true
       - name: Java
         uses: actions/setup-java@v4
         with:
@@ -57,26 +45,24 @@ jobs:
             mkdir resources
           fi
           
-          # Remove existing android folder to ensure a clean build
+          # Remove existing android folder
           rm -rf android
           
           # Add android platform
           npx cap add android
           
-          # Generate assets using the full package name for reliability
+          # Prepare icons for generation
           if [ -f "resources/icon.png" ]; then
-            echo "Icon source found. Preparing adaptive icons..."
+            echo "Preparing icons..."
             cp resources/icon.png resources/icon-only.png
             cp resources/icon.png resources/icon-foreground.png
             cp resources/icon.png resources/icon-background.png
-            npx @capacitor/assets generate --android --icon
+            
+            # Use the standard generate command without problematic flags
+            npx @capacitor/assets generate --android
           fi
           
-          if [ -f "resources/splash.png" ]; then
-            npx @capacitor/assets generate --android --splash
-          fi
-          
-          # Sync changes to android platform
+          # Sync changes
           npx cap sync android
       - name: APK Build
         run: |
