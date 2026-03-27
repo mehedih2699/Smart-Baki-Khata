@@ -62,6 +62,10 @@ jobs:
             npx @capacitor/assets generate --android
           fi
           
+          # Increment version code to avoid package conflicts
+          VERSION_CODE=${{ github.run_number }}
+          sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
+          
           # Sync changes
           npx cap sync android
       - name: APK Build
@@ -72,5 +76,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
+          name: app-debug-v${{ github.run_number }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
