@@ -31,7 +31,14 @@ jobs:
             sed -i "s/base: '.*'/base: '.\/'/" vite.config.ts || sed -i "s/plugins: \[/base: '.\/', plugins: \[/" vite.config.ts
           fi
           sed -i 's/src="\/src/src=".\/src/g' index.html || true
-          export GEMINI_API_KEY="dummy_key"
+          
+          # এপিআই কি সেট করা হচ্ছে (আপনার দেওয়া কি-টি এখানে সরাসরি যোগ করা হয়েছে)
+          if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
+            export GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
+          else
+            export GEMINI_API_KEY="AIzaSyAqB9JXHKgJyyzTV-dG4xAO-CQKRAhiOBY"
+          fi
+          
           npm run build
       - name: Java
         uses: actions/setup-java@v4
@@ -40,51 +47,32 @@ jobs:
           java-version: '21'
       - name: Capacitor Setup
         run: |
-          # Ensure resources folder exists
-          if [ ! -d "resources" ]; then
-            mkdir resources
-          fi
-          
-          # Remove existing android folder
+          if [ ! -d "resources" ]; then mkdir resources; fi
           rm -rf android
-          
-          # Add android platform
           npx cap add android
           
-          # Prepare icons for generation
+          # আইকন জেনারেশন
           if [ -f "resources/icon.png" ]; then
-            echo "Preparing icons..."
             cp resources/icon.png resources/icon-only.png
             cp resources/icon.png resources/icon-foreground.png
             cp resources/icon.png resources/icon-background.png
-            
-            # Use the standard generate command without problematic flags
             npx @capacitor/assets generate --android
           fi
           
-          # Increment version code and name to ensure updates are recognized
-          # We use a large offset + run_number to ensure it's always higher than previous manual builds
-          VERSION_CODE=$((200 + ${{ github.run_number }}))
+          # ভার্সন কোড বাড়ানো (যাতে আপডেট কাজ করে)
+          VERSION_CODE=$((300 + ${{ github.run_number }}))
           VERSION_NAME=$(node -p "require('./package.json').version")
           
-          echo "Setting Version Code: $VERSION_CODE"
-          echo "Setting Version Name: $VERSION_NAME (Build $VERSION_CODE)"
-          
-          # Update build.gradle with versioning
           sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
           sed -i "s/versionName \".*\"/versionName \"$VERSION_NAME\"/" android/app/build.gradle
           
-          # Ensure consistent signing by creating a fixed debug keystore if it doesn't exist
+          # স্থায়ী সিগনেচার কি (Signing Key) তৈরি
           mkdir -p ~/.android
           if [ ! -f ~/.android/debug.keystore ]; then
-            echo "Generating persistent debug keystore..."
             keytool -genkey -v -keystore ~/.android/debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" -storepass android -keypass android
           fi
-          
-          # Copy the persistent keystore to the android project
           cp ~/.android/debug.keystore android/app/debug.keystore
           
-          # Sync changes
           npx cap sync android
       - name: Cache Android Keystore
         uses: actions/cache@v4
