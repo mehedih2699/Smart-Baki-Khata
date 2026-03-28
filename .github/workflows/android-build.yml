@@ -6,8 +6,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,39 +15,24 @@ jobs:
           if [ -n "$ZIP" ]; then
             unzip -o "$ZIP" -d tmp
             SRC=$(find tmp -name "package.json" -exec dirname {} \; | head -1)
-            
-            # CRITICAL: Remove the .github folder from the unzipped content 
-            # so it doesn't overwrite our updated workflow!
             rm -rf "$SRC"/.github
-            
-            # Copy everything else to the root
             cp -af "$SRC"/. .
             rm -rf tmp "$ZIP"
           fi
       - name: Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Install
-        run: npm install --legacy-peer-deps
+        run: npm install --force
       - name: Build
         run: |
-          # Force relative paths in vite.config.ts
           if [ -f "vite.config.ts" ]; then
             sed -i "s/base: '.*'/base: '.\/'/" vite.config.ts || sed -i "s/plugins: \[/base: '.\/', plugins: \[/" vite.config.ts
           fi
-          # Fix absolute paths in index.html before build
           sed -i 's/src="\/src/src=".\/src/g' index.html || true
-          
           export GEMINI_API_KEY="dummy_key"
           npm run build
-          
-          # Check if dist/index.html has correct paths
-          echo "Checking dist/index.html paths:"
-          grep "src=" dist/index.html || true
-          
-          echo "Listing dist folder contents:"
-          ls -R dist
       - name: Java
         uses: actions/setup-java@v4
         with:
@@ -57,71 +40,48 @@ jobs:
           java-version: '21'
       - name: Capacitor Setup
         run: |
-          # Debug: List all files to see the structure after unzip
-          echo "Current directory structure:"
-          ls -R
-          
           # Ensure resources folder exists
-          if [ -d "resources" ]; then
-            echo "Resources folder found. Contents:"
-            ls resources
-          else
-            echo "ERROR: resources folder not found at root!"
+          if [ ! -d "resources" ]; then
             mkdir resources
           fi
           
-          # Remove existing android folder to ensure a clean build from source
+          # Remove existing android folder
           rm -rf android
           
           # Add android platform
           npx cap add android
           
-          # Generate assets using the full package name for reliability
-          # We use --icon and --splash separately to ensure both are attempted
+          # Prepare icons for generation
           if [ -f "resources/icon.png" ]; then
-            echo "Icon source found. Preparing adaptive icons..."
-            # Copy the main icon to all required names for adaptive icons
+            echo "Preparing icons..."
             cp resources/icon.png resources/icon-only.png
             cp resources/icon.png resources/icon-foreground.png
             cp resources/icon.png resources/icon-background.png
             
-            echo "Generating icons from resources/icon.png..."
-            npx @capacitor/assets generate --android --icon
-          elif [ -f "resources/icon-only.png" ]; then
-            echo "Generating icons from resources/icon-only.png..."
-            npx @capacitor/assets generate --android --icon
-          else
-            echo "Warning: No icon source found in resources/. Using default icons."
+            # Use the standard generate command without problematic flags
+            npx @capacitor/assets generate --android
           fi
           
-          if [ -f "resources/splash.png" ]; then
-            echo "Generating splash screens from resources/splash.png..."
-            npx @capacitor/assets generate --android --splash
-          fi
+          # Increment version code and name to ensure updates are recognized
+          # This uses the GitHub run number to ensure a unique, increasing version code
+          VERSION_CODE=$((100 + ${{ github.run_number }}))
+          VERSION_NAME=$(node -p "require('./package.json').version")
           
-          # Sync changes to android platform
+          echo "Setting Version Code: $VERSION_CODE"
+          echo "Setting Version Name: $VERSION_NAME.$VERSION_CODE"
+          
+          sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
+          sed -i "s/versionName \".*\"/versionName \"$VERSION_NAME\"/" android/app/build.gradle
+          
+          # Sync changes
           npx cap sync android
       - name: APK Build
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
+          name: app-debug-v${{ github.run_number }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-        with:
-          tag_name: latest-build
-          name: Latest Android Build
-          files: android/app/build/outputs/apk/debug/app-debug.apk
-          draft: false
-          prerelease: false
-          make_latest: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
