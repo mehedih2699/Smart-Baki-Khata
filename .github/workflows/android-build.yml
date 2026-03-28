@@ -63,18 +63,34 @@ jobs:
           fi
           
           # Increment version code and name to ensure updates are recognized
-          # This uses the GitHub run number to ensure a unique, increasing version code
-          VERSION_CODE=$((100 + ${{ github.run_number }}))
+          # We use a large offset + run_number to ensure it's always higher than previous manual builds
+          VERSION_CODE=$((200 + ${{ github.run_number }}))
           VERSION_NAME=$(node -p "require('./package.json').version")
           
           echo "Setting Version Code: $VERSION_CODE"
-          echo "Setting Version Name: $VERSION_NAME.$VERSION_CODE"
+          echo "Setting Version Name: $VERSION_NAME (Build $VERSION_CODE)"
           
+          # Update build.gradle with versioning
           sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
           sed -i "s/versionName \".*\"/versionName \"$VERSION_NAME\"/" android/app/build.gradle
           
+          # Ensure consistent signing by creating a fixed debug keystore if it doesn't exist
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            echo "Generating persistent debug keystore..."
+            keytool -genkey -v -keystore ~/.android/debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" -storepass android -keypass android
+          fi
+          
+          # Copy the persistent keystore to the android project
+          cp ~/.android/debug.keystore android/app/debug.keystore
+          
           # Sync changes
           npx cap sync android
+      - name: Cache Android Keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-${{ github.repository_id }}
       - name: APK Build
         run: |
           cd android
