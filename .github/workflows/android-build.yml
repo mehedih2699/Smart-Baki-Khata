@@ -6,120 +6,75 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Unzip Project
-        run: |
-          ZIP=$(ls *.zip | head -1)
-          if [ -n "$ZIP" ]; then
-            echo "Found zip: $ZIP"
-            unzip -o "$ZIP" -d tmp_extract
-            SRC_DIR=$(find tmp_extract -name "package.json" -exec dirname {} \; | head -1)
-            if [ -n "$SRC_DIR" ]; then
-              rm -rf "$SRC_DIR"/.github
-              cp -af "$SRC_DIR"/. .
-              echo "Project files extracted to root."
-            fi
-            rm -rf tmp_extract "$ZIP"
-          fi
-
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Install Dependencies
-        run: npm install --force
-
-      - name: Build Web Project
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          if [ -f "vite.config.ts" ]; then
-            sed -i "s/base: '.*'/base: '.\/'/" vite.config.ts || sed -i "s/plugins: \[/base: '.\/', plugins: \[/" vite.config.ts
-          fi
-          sed -i 's/src="\/src/src=".\/src/g' index.html || true
-          export VITE_GEMINI_API_KEY="$GEMINI_API_KEY"
-          export GEMINI_API_KEY="$GEMINI_API_KEY"
-          npm run build
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '21'
-
-      - name: Capacitor Android Setup
-        env:
-          RUN_NUMBER: ${{ github.run_number }}
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      - name: Full Build Process
         run: |
+          # 1. Extract Project
+          ZIP_FILE=$(ls *.zip | head -1)
+          if [ -n "$ZIP_FILE" ]; then
+            unzip -o "$ZIP_FILE" -d _tmp
+            SRC=$(find _tmp -name "package.json" -exec dirname {} \; | head -1)
+            rm -rf "$SRC"/.github
+            cp -af "$SRC"/. .
+            rm -rf _tmp "$ZIP_FILE"
+          fi
+          # 2. Install & Build Web
+          npm install --force
+          if [ -f "vite.config.ts" ]; then
+            sed -i "s/base: '.*'/base: '.\/'/" vite.config.ts || sed -i "s/plugins: \[/base: '.\/', plugins: \[/" vite.config.ts
+          fi
+          sed -i 's/src="\/src/src=".\/src/g' index.html || true
+          export VITE_GEMINI_API_KEY="$GEMINI_API_KEY"
+          npm run build
+          # 3. Capacitor & Assets
           rm -rf android
           npx cap add android
           mkdir -p resources
           if [ -f "resources/icon.png" ]; then
-            echo "Generating Android assets..."
             cp resources/icon.png resources/icon-only.png
             cp resources/icon.png resources/icon-foreground.png
             cp resources/icon.png resources/icon-background.png
-            if [ ! -f "resources/splash.png" ]; then
-              cp resources/icon.png resources/splash.png
-            fi
-            npx @capacitor/assets generate --android || echo "Asset generation failed, skipping..."
+            [ -f "resources/splash.png" ] || cp resources/icon.png resources/splash.png
+            npx @capacitor/assets generate --android || true
           fi
-          V_CODE=$((10000 + RUN_NUMBER))
+          # 4. Versioning
+          V_CODE=$((10000 + ${{ github.run_number }}))
           V_NAME=$(node -p "require('./package.json').version")
           sed -i "s/versionCode [0-9]*/versionCode $V_CODE/" android/app/build.gradle
           sed -i "s/versionName \".*\"/versionName \"$V_NAME\"/" android/app/build.gradle
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "Configuring signed build..."
-            echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
-            S_PASS="${STORE_PASS:-android}"
-            K_ALIAS="${KEY_ALIAS:-androiddebugkey}"
-            K_PASS="${KEY_PASS:-android}"
-            cat <<'EOF' > android/app/signing.gradle
-android {
-    signingConfigs {
-        release {
-            storeFile file("release.keystore")
-            storePassword "STORE_PASS_PLACEHOLDER"
-            keyAlias "KEY_ALIAS_PLACEHOLDER"
-            keyPassword "KEY_PASS_PLACEHOLDER"
-        }
-    }
-    buildTypes {
-        debug {
-            signingConfig signingConfigs.release
-        }
-        release {
-            signingConfig signingConfigs.release
-        }
-    }
-}
-EOF
-            sed -i "s/STORE_PASS_PLACEHOLDER/$S_PASS/" android/app/signing.gradle
-            sed -i "s/KEY_ALIAS_PLACEHOLDER/$K_ALIAS/" android/app/signing.gradle
-            sed -i "s/KEY_PASS_PLACEHOLDER/$K_PASS/" android/app/signing.gradle
+          # 5. Signing Configuration
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+            S_PASS="${ANDROID_KEYSTORE_PASSWORD:-android}"
+            K_ALIAS="${ANDROID_KEY_ALIAS:-androiddebugkey}"
+            K_PASS="${ANDROID_KEY_PASSWORD:-android}"
+            printf "android {\n    signingConfigs {\n        release {\n            storeFile file(\"release.keystore\")\n            storePassword \"%s\"\n            keyAlias \"%s\"\n            keyPassword \"%s\"\n        }\n    }\n    buildTypes {\n        debug { signingConfig signingConfigs.release }\n        release { signingConfig signingConfigs.release }\n    }\n}\n" "$S_PASS" "$K_ALIAS" "$K_PASS" > android/app/signing.gradle
             echo "apply from: 'signing.gradle'" >> android/app/build.gradle
           else
-            echo "Generating temporary keystore..."
-            keytool -genkey -v -keystore android/app/release.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Build,O=Android,C=US" -storepass android -keypass android
+            keytool -genkey -v -keystore android/app/release.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android,O=Android,C=US" -storepass android -keypass android
           fi
+          # 6. Sync & Build APK
           npx cap sync android
-
-      - name: Build Android APK
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug
-
-      - name: Upload APK Artifact
+          cd android && chmod +x gradlew && ./gradlew assembleDebug
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-v${{ github.run_number }}
+          name: app-v${{ github.run_number }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
