@@ -32,8 +32,9 @@ jobs:
           fi
           sed -i 's/src="\/src/src=".\/src/g' index.html || true
           
-          # Gemini API Key Setup
-          export VITE_GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY || 'AIzaSyDdV-Q6RqgdWdRn56v8Y6AGL9K4i3YzuRY' }}"
+          # Gemini API Key Setup (Using your new key)
+          # REMOVED BLOCKED KEY FALLBACK - PLEASE SET GEMINI_API_KEY IN GITHUB SECRETS
+          export VITE_GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
           export GEMINI_API_KEY="$VITE_GEMINI_API_KEY"
           
           npm run build
@@ -44,38 +45,78 @@ jobs:
           java-version: '21'
       - name: Capacitor Setup
         run: |
-          if [ ! -d "resources" ]; then mkdir resources; fi
+          # Ensure resources folder exists
+          if [ ! -d "resources" ]; then
+            mkdir resources
+          fi
+          
+          # Remove existing android folder
           rm -rf android
+          
+          # Add android platform
           npx cap add android
           
+          # Prepare icons and splash for generation
+          echo "Preparing assets..."
           if [ -f "resources/icon.png" ]; then
             cp resources/icon.png resources/icon-only.png
             cp resources/icon.png resources/icon-foreground.png
             cp resources/icon.png resources/icon-background.png
-            if [ ! -f "resources/splash.png" ]; then cp resources/icon.png resources/splash.png; fi
+            # If splash doesn't exist, use icon as fallback
+            if [ ! -f "resources/splash.png" ]; then
+              cp resources/icon.png resources/splash.png
+            fi
+          fi
+          
+          # Generate assets
+          if [ -f "resources/icon.png" ] || [ -f "resources/splash.png" ]; then
             npx @capacitor/assets generate --android
           fi
           
-          # Versioning - Using a very high number to override any previous versions
+          # Increment version code and name to ensure updates are recognized
+          # We use a large offset + run_number to ensure it's always higher than previous manual builds
           VERSION_CODE=$((10000 + ${{ github.run_number }}))
-          VERSION_NAME="1.0.${{ github.run_number }}"
+          VERSION_NAME=$(node -p "require('./package.json').version")
           
+          echo "Setting Version Code: $VERSION_CODE"
+          echo "Setting Version Name: $VERSION_NAME (Build $VERSION_CODE)"
+          
+          # Update build.gradle with versioning
           sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
           sed -i "s/versionName \".*\"/versionName \"$VERSION_NAME\"/" android/app/build.gradle
           
-          # Signing Configuration
+          # --- PERMANENT SIGNING SETUP ---
           if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "Using permanent keystore from GitHub Secrets..."
             echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
-            # Injecting signing configs directly into build.gradle
-            sed -i '/android {/a \    signingConfigs { release { storeFile file("release.keystore"); storePassword "android"; keyAlias "androiddebugkey"; keyPassword "android" } }' android/app/build.gradle
-            sed -i 's/signingConfig signingConfigs.debug/signingConfig signingConfigs.release/g' android/app/build.gradle
+            
+            # Inject signing configuration to build.gradle
+            sed -i '/buildTypes {/i \
+    signingConfigs { \
+        release { \
+            storeFile file("release.keystore") \
+            storePassword "${{ secrets.ANDROID_KEYSTORE_PASSWORD || '\''android'\'' }}" \
+            keyAlias "${{ secrets.ANDROID_KEY_ALIAS || '\''androiddebugkey'\'' }}" \
+            keyPassword "${{ secrets.ANDROID_KEY_PASSWORD || '\''android'\'' }}" \
+            } \
+    }' android/app/build.gradle
+            
+            # Apply signing to debug build (since we are building assembleDebug)
+            sed -i '/debug {/a \            signingConfig signingConfigs.release' android/app/build.gradle
           else
+            echo "WARNING: ANDROID_KEYSTORE_BASE64 secret is missing!"
+            echo "Generating a temporary keystore for this build..."
             keytool -genkey -v -keystore android/app/release.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Build,O=Android,C=US" -storepass android -keypass android
-            echo "--- COPY THIS CODE FOR PERMANENT SIGNING ---"
+            
+            # Print instructions for the user to make it permanent
+            echo "------------------------------------------------------------"
+            echo "!!! ACTION REQUIRED FOR PERMANENT UPDATES !!!"
+            echo "Copy the Base64 string below and save it as a GitHub Secret named 'ANDROID_KEYSTORE_BASE64':"
             base64 android/app/release.keystore | tr -d '\n'
-            echo -e "\n--------------------------------------------"
+            echo -e "\n------------------------------------------------------------"
           fi
           
+          # Sync changes
           npx cap sync android
       - name: APK Build
         run: |
