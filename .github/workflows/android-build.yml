@@ -32,8 +32,9 @@ jobs:
           fi
           sed -i 's/src="\/src/src=".\/src/g' index.html || true
           
-          # Gemini API Key Setup
-          export GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY || 'AIzaSyAqB9JXHKgJyyzTV-dG4xAO-CQKRAhiOBY' }}"
+          # Gemini API Key Setup (Using your new key)
+          export VITE_GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY || 'AIzaSyDdV-Q6RqgdWdRn56v8Y6AGL9K4i3YzuRY' }}"
+          export GEMINI_API_KEY="$VITE_GEMINI_API_KEY"
           
           npm run build
       - name: Java
@@ -47,7 +48,6 @@ jobs:
           rm -rf android
           npx cap add android
           
-          # Assets generation (Icon & Splash)
           if [ -f "resources/icon.png" ]; then
             cp resources/icon.png resources/icon-only.png
             cp resources/icon.png resources/icon-foreground.png
@@ -56,8 +56,7 @@ jobs:
             npx @capacitor/assets generate --android
           fi
           
-          # Versioning & Signing Setup
-          VERSION_CODE=$((6000 + ${{ github.run_number }}))
+          VERSION_CODE=$((9000 + ${{ github.run_number }}))
           VERSION_NAME=$(node -p "require('./package.json').version")
           
           sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
