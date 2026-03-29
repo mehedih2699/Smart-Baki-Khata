@@ -32,8 +32,7 @@ jobs:
           fi
           sed -i 's/src="\/src/src=".\/src/g' index.html || true
           
-          # Gemini API Key Setup (Using your new key)
-          # REMOVED BLOCKED KEY FALLBACK - PLEASE SET GEMINI_API_KEY IN GITHUB SECRETS
+          # Gemini API Key Setup
           export VITE_GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
           export GEMINI_API_KEY="$VITE_GEMINI_API_KEY"
           
@@ -46,11 +45,9 @@ jobs:
       - name: Capacitor Setup
         run: |
           # Ensure resources folder exists
-          if [ ! -d "resources" ]; then
-            mkdir resources
-          fi
+          mkdir -p resources
           
-          # Remove existing android folder
+          # Remove existing android folder to start fresh
           rm -rf android
           
           # Add android platform
@@ -68,17 +65,17 @@ jobs:
             fi
           fi
           
-          # Generate assets
+          # Generate assets (Fixes Flash Image/Splash Screen issue)
           if [ -f "resources/icon.png" ] || [ -f "resources/splash.png" ]; then
             npx @capacitor/assets generate --android
           fi
           
-          # Increment version code and name to ensure updates are recognized
+          # Increment version code to ensure updates are recognized
           VERSION_CODE=$((10000 + ${{ github.run_number }}))
           VERSION_NAME=$(node -p "require('./package.json').version")
           
           echo "Setting Version Code: $VERSION_CODE"
-          echo "Setting Version Name: $VERSION_NAME (Build $VERSION_CODE)"
+          echo "Setting Version Name: $VERSION_NAME"
           
           # Update build.gradle with versioning
           sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
@@ -89,27 +86,34 @@ jobs:
             echo "Using permanent keystore from GitHub Secrets..."
             echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
             
+            # Prepare signing config variables safely
+            STORE_PASS="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+            KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS }}"
+            KEY_PASS="${{ secrets.ANDROID_KEY_PASSWORD }}"
+            
+            [ -z "$STORE_PASS" ] && STORE_PASS="android"
+            [ -z "$KEY_ALIAS" ] && KEY_ALIAS="androiddebugkey"
+            [ -z "$KEY_PASS" ] && KEY_PASS="android"
+
             # Inject signing configuration to build.gradle
             sed -i '/buildTypes {/i \
-            signingConfigs { \
-                release { \
-                    storeFile file("release.keystore") \
-                    storePassword "${{ secrets.ANDROID_KEYSTORE_PASSWORD || '\''android'\'' }}" \
-                    keyAlias "${{ secrets.ANDROID_KEY_ALIAS || '\''androiddebugkey'\'' }}" \
-                    keyPassword "${{ secrets.ANDROID_KEY_PASSWORD || '\''android'\'' }}" \
-                } \
-            }' android/app/build.gradle
+    signingConfigs { \
+        release { \
+            storeFile file("release.keystore") \
+            storePassword "'"$STORE_PASS"'" \
+            keyAlias "'"$KEY_ALIAS"'" \
+            keyPassword "'"$KEY_PASS"'" \
+        } \
+    }' android/app/build.gradle
             
             # Apply signing to debug build
             sed -i '/debug {/a \            signingConfig signingConfigs.release' android/app/build.gradle
           else
-            echo "WARNING: ANDROID_KEYSTORE_BASE64 secret is missing!"
             echo "Generating a temporary keystore..."
             keytool -genkey -v -keystore android/app/release.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Build,O=Android,C=US" -storepass android -keypass android
             
             echo "------------------------------------------------------------"
-            echo "!!! ACTION REQUIRED FOR PERMANENT UPDATES !!!"
-            echo "Copy the Base64 string below and save it as a GitHub Secret named 'ANDROID_KEYSTORE_BASE64':"
+            echo "!!! ACTION REQUIRED: Save this Base64 as 'ANDROID_KEYSTORE_BASE64' secret !!!"
             base64 android/app/release.keystore | tr -d '\n'
             echo -e "\n------------------------------------------------------------"
           fi
