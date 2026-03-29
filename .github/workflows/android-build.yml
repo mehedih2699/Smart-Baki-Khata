@@ -74,7 +74,6 @@ jobs:
           fi
           
           # Increment version code and name to ensure updates are recognized
-          # We use a large offset + run_number to ensure it's always higher than previous manual builds
           VERSION_CODE=$((10000 + ${{ github.run_number }}))
           VERSION_NAME=$(node -p "require('./package.json').version")
           
@@ -92,23 +91,22 @@ jobs:
             
             # Inject signing configuration to build.gradle
             sed -i '/buildTypes {/i \
-    signingConfigs { \
-        release { \
-            storeFile file("release.keystore") \
-            storePassword "${{ secrets.ANDROID_KEYSTORE_PASSWORD || '\''android'\'' }}" \
-            keyAlias "${{ secrets.ANDROID_KEY_ALIAS || '\''androiddebugkey'\'' }}" \
-            keyPassword "${{ secrets.ANDROID_KEY_PASSWORD || '\''android'\'' }}" \
-            } \
-    }' android/app/build.gradle
+            signingConfigs { \
+                release { \
+                    storeFile file("release.keystore") \
+                    storePassword "${{ secrets.ANDROID_KEYSTORE_PASSWORD || '\''android'\'' }}" \
+                    keyAlias "${{ secrets.ANDROID_KEY_ALIAS || '\''androiddebugkey'\'' }}" \
+                    keyPassword "${{ secrets.ANDROID_KEY_PASSWORD || '\''android'\'' }}" \
+                } \
+            }' android/app/build.gradle
             
-            # Apply signing to debug build (since we are building assembleDebug)
+            # Apply signing to debug build
             sed -i '/debug {/a \            signingConfig signingConfigs.release' android/app/build.gradle
           else
             echo "WARNING: ANDROID_KEYSTORE_BASE64 secret is missing!"
-            echo "Generating a temporary keystore for this build..."
+            echo "Generating a temporary keystore..."
             keytool -genkey -v -keystore android/app/release.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Build,O=Android,C=US" -storepass android -keypass android
             
-            # Print instructions for the user to make it permanent
             echo "------------------------------------------------------------"
             echo "!!! ACTION REQUIRED FOR PERMANENT UPDATES !!!"
             echo "Copy the Base64 string below and save it as a GitHub Secret named 'ANDROID_KEYSTORE_BASE64':"
