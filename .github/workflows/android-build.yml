@@ -47,7 +47,7 @@ jobs:
           # Ensure resources folder exists
           mkdir -p resources
           
-          # Remove existing android folder to start fresh
+          # Remove existing android folder
           rm -rf android
           
           # Add android platform
@@ -59,34 +59,27 @@ jobs:
             cp resources/icon.png resources/icon-only.png
             cp resources/icon.png resources/icon-foreground.png
             cp resources/icon.png resources/icon-background.png
-            # If splash doesn't exist, use icon as fallback
             if [ ! -f "resources/splash.png" ]; then
               cp resources/icon.png resources/splash.png
             fi
           fi
           
-          # Generate assets (Fixes Flash Image/Splash Screen issue)
+          # Generate assets
           if [ -f "resources/icon.png" ] || [ -f "resources/splash.png" ]; then
             npx @capacitor/assets generate --android
           fi
           
-          # Increment version code to ensure updates are recognized
+          # Versioning
           VERSION_CODE=$((10000 + ${{ github.run_number }}))
           VERSION_NAME=$(node -p "require('./package.json').version")
           
-          echo "Setting Version Code: $VERSION_CODE"
-          echo "Setting Version Name: $VERSION_NAME"
-          
-          # Update build.gradle with versioning
           sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
           sed -i "s/versionName \".*\"/versionName \"$VERSION_NAME\"/" android/app/build.gradle
           
-          # --- PERMANENT SIGNING SETUP ---
+          # --- SIGNING SETUP (FIXED VERSION) ---
           if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
-            echo "Using permanent keystore from GitHub Secrets..."
             echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
             
-            # Prepare signing config variables safely
             STORE_PASS="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
             KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS }}"
             KEY_PASS="${{ secrets.ANDROID_KEY_PASSWORD }}"
@@ -95,30 +88,28 @@ jobs:
             [ -z "$KEY_ALIAS" ] && KEY_ALIAS="androiddebugkey"
             [ -z "$KEY_PASS" ] && KEY_PASS="android"
 
-            # Inject signing configuration to build.gradle
-            sed -i '/buildTypes {/i \
-    signingConfigs { \
-        release { \
-            storeFile file("release.keystore") \
-            storePassword "'"$STORE_PASS"'" \
-            keyAlias "'"$KEY_ALIAS"'" \
-            keyPassword "'"$KEY_PASS"'" \
-        } \
-    }' android/app/build.gradle
+            # Create a temporary file to avoid complex escaping in sed
+            cat > signing.txt <<EOF
+    signingConfigs {
+        release {
+            storeFile file("release.keystore")
+            storePassword "$STORE_PASS"
+            keyAlias "$KEY_ALIAS"
+            keyPassword "$KEY_PASS"
+        }
+    }
+EOF
+            # Inject the signing config safely
+            sed -i '/buildTypes {/i MARKER' android/app/build.gradle
+            sed -i '/MARKER/r signing.txt' android/app/build.gradle
+            sed -i '/MARKER/d' android/app/build.gradle
             
-            # Apply signing to debug build
             sed -i '/debug {/a \            signingConfig signingConfigs.release' android/app/build.gradle
           else
-            echo "Generating a temporary keystore..."
             keytool -genkey -v -keystore android/app/release.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Build,O=Android,C=US" -storepass android -keypass android
-            
-            echo "------------------------------------------------------------"
-            echo "!!! ACTION REQUIRED: Save this Base64 as 'ANDROID_KEYSTORE_BASE64' secret !!!"
             base64 android/app/release.keystore | tr -d '\n'
-            echo -e "\n------------------------------------------------------------"
           fi
           
-          # Sync changes
           npx cap sync android
       - name: APK Build
         run: |
