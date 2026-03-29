@@ -32,13 +32,8 @@ jobs:
           fi
           sed -i 's/src="\/src/src=".\/src/g' index.html || true
           
-          # Use the GEMINI_API_KEY from secrets if available, otherwise use a placeholder
-          if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
-            export GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
-          else
-            # Fallback to the user provided key if secret is missing
-            export GEMINI_API_KEY="AIzaSyAqB9JXHKgJyyzTV-dG4xAO-CQKRAhiOBY"
-          fi
+          # Gemini API Key Setup
+          export GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY || 'AIzaSyAqB9JXHKgJyyzTV-dG4xAO-CQKRAhiOBY' }}"
           
           npm run build
       - name: Java
@@ -48,59 +43,35 @@ jobs:
           java-version: '21'
       - name: Capacitor Setup
         run: |
-          if [ ! -d "resources" ]; then
-            mkdir resources
-          fi
+          if [ ! -d "resources" ]; then mkdir resources; fi
           rm -rf android
           npx cap add android
           
-          echo "Preparing assets..."
+          # Assets generation (Icon & Splash)
           if [ -f "resources/icon.png" ]; then
             cp resources/icon.png resources/icon-only.png
             cp resources/icon.png resources/icon-foreground.png
             cp resources/icon.png resources/icon-background.png
-            if [ ! -f "resources/splash.png" ]; then
-              cp resources/icon.png resources/splash.png
-            fi
-          fi
-          
-          if [ -f "resources/icon.png" ] || [ -f "resources/splash.png" ]; then
+            if [ ! -f "resources/splash.png" ]; then cp resources/icon.png resources/splash.png; fi
             npx @capacitor/assets generate --android
           fi
           
-          VERSION_CODE=$((5000 + ${{ github.run_number }}))
+          # Versioning & Signing Setup
+          VERSION_CODE=$((6000 + ${{ github.run_number }}))
           VERSION_NAME=$(node -p "require('./package.json').version")
-          
-          echo "Setting Version Code: $VERSION_CODE"
-          echo "Setting Version Name: $VERSION_NAME (Build $VERSION_CODE)"
           
           sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
           sed -i "s/versionName \".*\"/versionName \"$VERSION_NAME\"/" android/app/build.gradle
           
           if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
-            echo "Using permanent keystore from GitHub Secrets..."
             echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
-            
-            sed -i '/buildTypes {/i \
-    signingConfigs { \
-        release { \
-            storeFile file("release.keystore") \
-            storePassword "${{ secrets.ANDROID_KEYSTORE_PASSWORD || '\''android'\'' }}" \
-            keyAlias "${{ secrets.ANDROID_KEY_ALIAS || '\''androiddebugkey'\'' }}" \
-            keyPassword "${{ secrets.ANDROID_KEY_PASSWORD || '\''android'\'' }}" \
-        } \
-    }' android/app/build.gradle
-            
-            sed -i '/debug {/a \            signingConfig signingConfigs.release' android/app/build.gradle
+            sed -i '/buildTypes {/i signingConfigs { release { storeFile file("release.keystore"); storePassword "android"; keyAlias "androiddebugkey"; keyPassword "android" } }' android/app/build.gradle
+            sed -i '/debug {/a signingConfig signingConfigs.release' android/app/build.gradle
           else
-            echo "WARNING: ANDROID_KEYSTORE_BASE64 secret is missing!"
             keytool -genkey -v -keystore android/app/release.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Build,O=Android,C=US" -storepass android -keypass android
-            
-            echo "------------------------------------------------------------"
-            echo "!!! ACTION REQUIRED FOR PERMANENT UPDATES !!!"
-            echo "Copy the Base64 string below and save it as a GitHub Secret named 'ANDROID_KEYSTORE_BASE64':"
+            echo "--- COPY THIS CODE FOR PERMANENT SIGNING ---"
             base64 android/app/release.keystore | tr -d '\n'
-            echo -e "\n------------------------------------------------------------"
+            echo -e "\n--------------------------------------------"
           fi
           
           npx cap sync android
