@@ -97,11 +97,13 @@ jobs:
           sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
           sed -i "s/versionName \".*\"/versionName \"$VERSION_NAME\"/" android/app/build.gradle
           
-          # Ensure consistent signing by creating a fixed debug keystore if it doesn't exist
-          # This will be cached by the next step
+          # Ensure consistent signing by using the original keystore from secrets
           mkdir -p ~/.android
-          if [ ! -f ~/.android/debug.keystore ]; then
-            echo "Generating persistent debug keystore..."
+          if [ -n "${{ secrets.ANDROID_KEYSTORE }}" ]; then
+            echo "Using original keystore from GitHub Secrets..."
+            echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -d > ~/.android/debug.keystore
+          elif [ ! -f ~/.android/debug.keystore ]; then
+            echo "Generating a new persistent debug keystore (fallback)..."
             keytool -genkey -v -keystore ~/.android/debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" -storepass android -keypass android
           fi
           
