@@ -31,7 +31,10 @@ jobs:
         with:
           node-version: 20
       - name: Install
-        run: npm install --legacy-peer-deps
+        run: |
+          npm install --legacy-peer-deps
+          # Explicitly install react-is to fix recharts resolution issue in Vite/Rollup
+          npm install react-is --legacy-peer-deps
       - name: Build
         run: |
           # Force relative paths in vite.config.ts
