@@ -1,4 +1,4 @@
-name: Build Android APK (New File-Based System)
+name: Build Android APK (Absolute Path Fix)
 on:
   push:
     branches: [ main, master ]
@@ -46,25 +46,29 @@ jobs:
           # ভার্সন কোড বাড়ানো যাতে আপডেট নিতে সমস্যা না হয়
           sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" android/app/build.gradle
 
-      - name: Handle Keystore (The New Arrangement)
+      - name: Handle Keystore (Absolute Path Arrangement)
         run: |
-          # চেক করা জিপের ভেতর চাবি আছে কি না
+          # একটি নির্দিষ্ট ফোল্ডার তৈরি করা চাবির জন্য
+          mkdir -p ${{ github.workspace }}/keystore_dir
+          
           if [ -f "android-key/release.keystore" ]; then
             echo "--- USING KEYSTORE FROM YOUR ZIP FILE ---"
-            cp android-key/release.keystore android/app/release.keystore
+            cp android-key/release.keystore ${{ github.workspace }}/keystore_dir/release.keystore
           else
             echo "--- GENERATING A BRAND NEW MASTER KEYSTORE ---"
+            keytool -genkey -v -keystore ${{ github.workspace }}/keystore_dir/release.keystore -alias baki_khata_key -keypass android123 -storepass android123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Baki Khata, O=Smart, C=BD"
+            
+            # ভবিষ্যতে ব্যবহারের জন্য এটি আলাদা করে রাখা
             mkdir -p android-key
-            keytool -genkey -v -keystore android/app/release.keystore -alias baki_khata_key -keypass android123 -storepass android123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Baki Khata, O=Smart, C=BD"
-            # নতুন চাবিটি সেভ করার জন্য কপি করে রাখা
-            cp android/app/release.keystore ./android-key/release.keystore
+            cp ${{ github.workspace }}/keystore_dir/release.keystore android-key/release.keystore
           fi
 
       - name: Build Android APK
         run: |
           cd android
+          # সরাসরি অ্যাবসোলিউট পাথ ব্যবহার করে বিল্ড করা
           ./gradlew assembleDebug \
-            -Pandroid.injected.signing.store.file=release.keystore \
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/keystore_dir/release.keystore \
             -Pandroid.injected.signing.store.password=android123 \
             -Pandroid.injected.signing.key.alias=baki_khata_key \
             -Pandroid.injected.signing.key.password=android123
