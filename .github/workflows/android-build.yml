@@ -1,4 +1,4 @@
-name: Build Android APK (Absolute Path Fix)
+name: Build Android APK (Final Fix with Assets & Keystore)
 on:
   push:
     branches: [ main, master ]
@@ -34,21 +34,31 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Build Web Project (AI Advisor Safety)
+      - name: Build Web Project
         run: npm run build
         env:
           VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Generate Android Assets
+        run: |
+          # resources ফোল্ডারে আইকন এবং ফ্ল্যাশ ইমেজ চেক করা
+          if [ -f "resources/icon.png" ] || [ -f "resources/splash.png" ]; then
+            echo "Generating assets..."
+            mkdir -p resources/android
+            npx @capacitor/assets generate --android
+          else
+            echo "No icon.png or splash.png found in resources/ folder. Skipping asset generation."
+          fi
 
       - name: Capacitor Sync & Versioning
         run: |
           npx cap add android || true
           npx cap sync android
-          # ভার্সন কোড বাড়ানো যাতে আপডেট নিতে সমস্যা না হয়
+          # ভার্সন কোড বাড়ানো যাতে আগের অ্যাপের ওপর আপডেট নেয়
           sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" android/app/build.gradle
 
-      - name: Handle Keystore (Absolute Path Arrangement)
+      - name: Handle Keystore (Absolute Path Fix)
         run: |
-          # একটি নির্দিষ্ট ফোল্ডার তৈরি করা চাবির জন্য
           mkdir -p ${{ github.workspace }}/keystore_dir
           
           if [ -f "android-key/release.keystore" ]; then
@@ -58,7 +68,6 @@ jobs:
             echo "--- GENERATING A BRAND NEW MASTER KEYSTORE ---"
             keytool -genkey -v -keystore ${{ github.workspace }}/keystore_dir/release.keystore -alias baki_khata_key -keypass android123 -storepass android123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Baki Khata, O=Smart, C=BD"
             
-            # ভবিষ্যতে ব্যবহারের জন্য এটি আলাদা করে রাখা
             mkdir -p android-key
             cp ${{ github.workspace }}/keystore_dir/release.keystore android-key/release.keystore
           fi
@@ -66,7 +75,6 @@ jobs:
       - name: Build Android APK
         run: |
           cd android
-          # সরাসরি অ্যাবসোলিউট পাথ ব্যবহার করে বিল্ড করা
           ./gradlew assembleDebug \
             -Pandroid.injected.signing.store.file=${{ github.workspace }}/keystore_dir/release.keystore \
             -Pandroid.injected.signing.store.password=android123 \
