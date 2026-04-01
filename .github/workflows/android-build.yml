@@ -11,16 +11,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Unzip Project (For Mobile Users)
+      - name: Unzip Project
         run: |
           if ls *.zip 1> /dev/null 2>&1; then
-            echo "Zip file found, unzipping..."
             unzip -o *.zip
             if [ ! -f package.json ]; then
               mv */* . 2>/dev/null || true
             fi
-          else
-            echo "No zip file found, assuming files are already extracted."
           fi
 
       - name: Set up Node.js
@@ -35,42 +32,39 @@ jobs:
           java-version: '21'
 
       - name: Install dependencies
-        run: |
-          npm install --legacy-peer-deps
-          npm install @capacitor/assets --save-dev
+        run: npm install --legacy-peer-deps
 
       - name: Build Web Project
         run: npm run build
         env:
-          VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} # এখানে সিক্রেট পাস করা হচ্ছে
+          VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
-      - name: Capacitor Setup & Generate Assets
+      - name: Capacitor Sync
         run: |
           npx cap add android || true
-          if [ -d "resources" ]; then
-            npx @capacitor/assets generate --android
-          fi
           npx cap sync android
 
-      - name: Handle Keystore (Use Secret)
+      - name: Prepare Keystore & Update Version
         run: |
-          mkdir -p ~/.android
-          if [ -n "${{ secrets.ANDROID_KEYSTORE }}" ]; then
-            echo "--- USING EXISTING KEYSTORE FROM SECRETS ---"
-            echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -d > ~/.android/release.keystore
-            cp ~/.android/release.keystore android/app/debug.keystore
-          else
-            echo "ERROR: ANDROID_KEYSTORE secret not found."
-            exit 1
-          fi
+          # সিক্রেট থেকে কী-স্টোর তৈরি
+          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -d > android/app/release.keystore
+          
+          # অটোমেটিক ভার্সন কোড বাড়ানো (যাতে আপডেট নিতে সুবিধা হয়)
+          VERSION_CODE=${{ github.run_number }}
+          sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
+          echo "Version Code set to: $VERSION_CODE"
 
-      - name: Build Android APK
+      - name: Build Android APK (Forced Signing)
         run: |
           cd android
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug \
+            -Pandroid.injected.signing.store.file=release.keystore \
+            -Pandroid.injected.signing.store.password=android123 \
+            -Pandroid.injected.signing.key.alias=baki_khata_key \
+            -Pandroid.injected.signing.key.password=android123
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Baki-Khata-Pro-Final
+          name: Baki-Khata-Pro-V${{ github.run_number }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
