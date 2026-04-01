@@ -1,4 +1,4 @@
-name: Build Android APK (Final Fix)
+name: Build Android APK (Absolute Path Fix)
 on:
   push:
     branches: [ main, master ]
@@ -46,16 +46,16 @@ jobs:
 
       - name: Prepare Keystore & Update Version
         run: |
-          # চাবিটিকে আরও শক্তিশালীভাবে ডিকোড করা
-          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > android/app/release.keystore
+          # সরাসরি রুট ডিরেক্টরিতে কী-স্টোর তৈরি করা
+          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > ${{ github.workspace }}/release.keystore
           
-          # চেক করা ফাইলটি তৈরি হয়েছে কি না
-          if [ ! -s android/app/release.keystore ]; then
+          # ফাইলটি তৈরি হয়েছে কি না তা চেক করা
+          if [ ! -s ${{ github.workspace }}/release.keystore ]; then
             echo "Error: Keystore decoding failed!"
             exit 1
           fi
 
-          # অটোমেটিক ভার্সন কোড বাড়ানো (যাতে আপডেট নিতে সুবিধা হয়)
+          # অটোমেটিক ভার্সন কোড বাড়ানো
           VERSION_CODE=${{ github.run_number }}
           sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
           echo "Version Code set to: $VERSION_CODE"
@@ -63,8 +63,9 @@ jobs:
       - name: Build Android APK (Forced Signing)
         run: |
           cd android
+          # অ্যাবসোলিউট পাথ ব্যবহার করে বিল্ড করা
           ./gradlew assembleDebug \
-            -Pandroid.injected.signing.store.file=release.keystore \
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/release.keystore \
             -Pandroid.injected.signing.store.password=android123 \
             -Pandroid.injected.signing.key.alias=baki_khata_key \
             -Pandroid.injected.signing.key.password=android123
