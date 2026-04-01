@@ -1,4 +1,4 @@
-name: Build Android APK (Final Fix with Assets & Keystore)
+name: Build Android APK (Final Fix with Assets & Updates)
 on:
   push:
     branches: [ main, master ]
@@ -39,12 +39,23 @@ jobs:
         env:
           VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
-      - name: Generate Android Assets
+      - name: Capacitor Add Android
+        run: npx cap add android || true
+
+      - name: Generate Android Assets (Icon & Splash)
         run: |
-          # resources ফোল্ডারে আইকন এবং ফ্ল্যাশ ইমেজ চেক করা
+          # আইকন এবং ফ্ল্যাশ ইমেজ জেনারেট করার জন্য সোর্স ফাইল প্রস্তুত করা
           if [ -f "resources/icon.png" ] || [ -f "resources/splash.png" ]; then
             echo "Generating assets..."
-            mkdir -p resources/android
+            mkdir -p assets
+            # আইকনের জন্য সোর্স কপি
+            [ -f "resources/icon.png" ] && cp resources/icon.png assets/icon-only.png
+            [ -f "resources/icon.png" ] && cp resources/icon.png assets/icon-foreground.png
+            [ -f "resources/icon.png" ] && cp resources/icon.png assets/icon-background.png
+            # ফ্ল্যাশ ইমেজের জন্য সোর্স কপি
+            [ -f "resources/splash.png" ] && cp resources/splash.png assets/splash.png
+            
+            # অ্যাসেট জেনারেশন কমান্ড রান করা
             npx @capacitor/assets generate --android
           else
             echo "No icon.png or splash.png found in resources/ folder. Skipping asset generation."
@@ -52,10 +63,10 @@ jobs:
 
       - name: Capacitor Sync & Versioning
         run: |
-          npx cap add android || true
           npx cap sync android
-          # ভার্সন কোড বাড়ানো যাতে আগের অ্যাপের ওপর আপডেট নেয়
+          # ভার্সন কোড এবং ভার্সন নেম আপডেট (যাতে আপডেট ইন্সটল হয়)
           sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          sed -i "s/versionName \".*\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
 
       - name: Handle Keystore (Absolute Path Fix)
         run: |
