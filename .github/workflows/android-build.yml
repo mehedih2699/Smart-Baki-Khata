@@ -1,4 +1,4 @@
-name: Build Android APK (Absolute Path Fix)
+name: Build Android APK (Verified Signing)
 on:
   push:
     branches: [ main, master ]
@@ -44,28 +44,24 @@ jobs:
           npx cap add android || true
           npx cap sync android
 
-      - name: Prepare Keystore & Update Version
+      - name: Prepare & Verify Keystore
         run: |
-          # সরাসরি রুট ডিরেক্টরিতে কী-স্টোর তৈরি করা
-          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > ${{ github.workspace }}/release.keystore
+          # সিক্রেট থেকে চাবি নিয়ে আসা এবং সব অদৃশ্য স্পেস মুছে ফেলা (Cleaning)
+          echo "${{ secrets.ANDROID_KEYSTORE }}" | tr -d '[:space:]' | base64 --decode > android/app/release.keystore
           
-          # ফাইলটি তৈরি হয়েছে কি না তা চেক করা
-          if [ ! -s ${{ github.workspace }}/release.keystore ]; then
-            echo "Error: Keystore decoding failed!"
-            exit 1
-          fi
-
-          # অটোমেটিক ভার্সন কোড বাড়ানো
+          # ভেরিফিকেশন: বিল্ডের আগে চেক করা চাবিটি কাজ করছে কি না
+          echo "--- VERIFYING KEY INTEGRITY ---"
+          keytool -list -v -keystore android/app/release.keystore -storepass android123 -alias baki_khata_key || { echo "ERROR: Invalid Keystore or Password!"; exit 1; }
+          
+          # ভার্সন কোড আপডেট
           VERSION_CODE=${{ github.run_number }}
           sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
-          echo "Version Code set to: $VERSION_CODE"
 
-      - name: Build Android APK (Forced Signing)
+      - name: Build Android APK (Final Signing)
         run: |
           cd android
-          # অ্যাবসোলিউট পাথ ব্যবহার করে বিল্ড করা
           ./gradlew assembleDebug \
-            -Pandroid.injected.signing.store.file=${{ github.workspace }}/release.keystore \
+            -Pandroid.injected.signing.store.file=release.keystore \
             -Pandroid.injected.signing.store.password=android123 \
             -Pandroid.injected.signing.key.alias=baki_khata_key \
             -Pandroid.injected.signing.key.password=android123
