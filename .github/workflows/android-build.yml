@@ -46,19 +46,20 @@ jobs:
 
       - name: Prepare Keystore & Update Version
         run: |
-          # সিক্রেট থেকে কী-স্টোর তৈরি
-          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -d > android/app/release.keystore
+          # সরাসরি রুট ডিরেক্টরিতে কী-স্টোর তৈরি করা
+          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -d > $GITHUB_WORKSPACE/release.keystore
           
-          # অটোমেটিক ভার্সন কোড বাড়ানো (যাতে আপডেট নিতে সুবিধা হয়)
+          # অটোমেটিক ভার্সন কোড বাড়ানো
           VERSION_CODE=${{ github.run_number }}
           sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
           echo "Version Code set to: $VERSION_CODE"
 
       - name: Build Android APK (Forced Signing)
         run: |
+          # ফুল পাথ ব্যবহার করে বিল্ড করা
           cd android
           ./gradlew assembleDebug \
-            -Pandroid.injected.signing.store.file=release.keystore \
+            -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/release.keystore \
             -Pandroid.injected.signing.store.password=android123 \
             -Pandroid.injected.signing.key.alias=baki_khata_key \
             -Pandroid.injected.signing.key.password=android123
@@ -66,5 +67,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Baki-Khata-Pro-V${{ github.run_number }}
+          name: Baki-Khata-Pro-Final
           path: android/app/build/outputs/apk/debug/app-debug.apk
