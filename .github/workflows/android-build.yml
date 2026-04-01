@@ -1,4 +1,4 @@
-name: Build Android APK (Mobile Friendly)
+name: Build Android APK (Permanent Key System)
 on:
   push:
     branches: [ main, master ]
@@ -26,20 +26,20 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22  # এখানে ২০ থেকে বাড়িয়ে ২২ করা হয়েছে
+          node-version: 22
 
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: '21' # এখানে ১৭ থেকে বাড়িয়ে ২১ করা হয়েছে
 
       - name: Install dependencies
         run: |
           if [ -f package.json ]; then
             npm install --legacy-peer-deps
           else
-            echo "Error: package.json not found! Make sure your zip contains it."
+            echo "Error: package.json not found!"
             exit 1
           fi
 
@@ -51,21 +51,16 @@ jobs:
           npx cap add android
           npx cap sync android
 
-      - name: Handle Keystore (Generate or Use Secret)
+      - name: Handle Keystore (Use Secret)
         run: |
           mkdir -p ~/.android
-          if [ -z "${{ secrets.ANDROID_KEYSTORE }}" ]; then
-            echo "--- NO KEYSTORE FOUND. GENERATING NEW PERMANENT KEY ---"
-            keytool -genkey -v -keystore ~/.android/release.keystore -alias baki_khata_key -keypass android123 -storepass android123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Baki Khata, O=Smart, C=BD"
-            echo "--- COPY THE LINE BELOW AND SAVE AS 'ANDROID_KEYSTORE' IN SECRETS ---"
-            base64 -w 0 ~/.android/release.keystore
-            echo ""
-            echo "--- END OF KEY ---"
-            cp ~/.android/release.keystore android/app/debug.keystore
-          else
+          if [ -n "${{ secrets.ANDROID_KEYSTORE }}" ]; then
             echo "--- USING EXISTING KEYSTORE FROM SECRETS ---"
             echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -d > ~/.android/release.keystore
             cp ~/.android/release.keystore android/app/debug.keystore
+          else
+            echo "ERROR: ANDROID_KEYSTORE secret not found. Please add it in settings."
+            exit 1
           fi
 
       - name: Build Android APK
