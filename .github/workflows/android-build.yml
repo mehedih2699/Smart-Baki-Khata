@@ -1,4 +1,4 @@
-name: Build Android APK (Verified Signing)
+name: Build Android APK (New File-Based System)
 on:
   push:
     branches: [ main, master ]
@@ -39,25 +39,28 @@ jobs:
         env:
           VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
-      - name: Capacitor Sync
+      - name: Capacitor Sync & Versioning
         run: |
           npx cap add android || true
           npx cap sync android
+          # ভার্সন কোড বাড়ানো যাতে আপডেট নিতে সমস্যা না হয়
+          sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" android/app/build.gradle
 
-      - name: Prepare & Verify Keystore
+      - name: Handle Keystore (The New Arrangement)
         run: |
-          # সিক্রেট থেকে চাবি নিয়ে আসা এবং সব অদৃশ্য স্পেস মুছে ফেলা (Cleaning)
-          echo "${{ secrets.ANDROID_KEYSTORE }}" | tr -d '[:space:]' | base64 --decode > android/app/release.keystore
-          
-          # ভেরিফিকেশন: বিল্ডের আগে চেক করা চাবিটি কাজ করছে কি না
-          echo "--- VERIFYING KEY INTEGRITY ---"
-          keytool -list -v -keystore android/app/release.keystore -storepass android123 -alias baki_khata_key || { echo "ERROR: Invalid Keystore or Password!"; exit 1; }
-          
-          # ভার্সন কোড আপডেট
-          VERSION_CODE=${{ github.run_number }}
-          sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
+          # চেক করা জিপের ভেতর চাবি আছে কি না
+          if [ -f "android-key/release.keystore" ]; then
+            echo "--- USING KEYSTORE FROM YOUR ZIP FILE ---"
+            cp android-key/release.keystore android/app/release.keystore
+          else
+            echo "--- GENERATING A BRAND NEW MASTER KEYSTORE ---"
+            mkdir -p android-key
+            keytool -genkey -v -keystore android/app/release.keystore -alias baki_khata_key -keypass android123 -storepass android123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Baki Khata, O=Smart, C=BD"
+            # নতুন চাবিটি সেভ করার জন্য কপি করে রাখা
+            cp android/app/release.keystore ./android-key/release.keystore
+          fi
 
-      - name: Build Android APK (Final Signing)
+      - name: Build Android APK
         run: |
           cd android
           ./gradlew assembleDebug \
@@ -66,8 +69,10 @@ jobs:
             -Pandroid.injected.signing.key.alias=baki_khata_key \
             -Pandroid.injected.signing.key.password=android123
 
-      - name: Upload APK
+      - name: Upload APK & Master Keystore
         uses: actions/upload-artifact@v4
         with:
-          name: Baki-Khata-Pro-Final
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: Baki-Khata-Pro-Final-Package
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android-key/release.keystore
