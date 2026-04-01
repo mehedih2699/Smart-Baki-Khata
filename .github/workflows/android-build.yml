@@ -1,4 +1,4 @@
-name: Build Android APK (Permanent Key System)
+name: Build Android APK (Final Fix)
 on:
   push:
     branches: [ main, master ]
@@ -41,11 +41,12 @@ jobs:
 
       - name: Build Web Project
         run: npm run build
+        env:
+          VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} # এখানে সিক্রেট পাস করা হচ্ছে
 
       - name: Capacitor Setup & Generate Assets
         run: |
           npx cap add android || true
-          # আইকন এবং স্প্ল্যাশ স্ক্রিন জেনারেট করা
           if [ -d "resources" ]; then
             npx @capacitor/assets generate --android
           fi
