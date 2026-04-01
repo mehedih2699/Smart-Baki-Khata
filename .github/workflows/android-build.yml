@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Build Web Project
+      - name: Build Web Project (AI Advisor Safety)
         run: npm run build
         env:
           VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -46,20 +46,25 @@ jobs:
 
       - name: Prepare Keystore & Update Version
         run: |
-          # সরাসরি রুট ডিরেক্টরিতে কী-স্টোর তৈরি করা
-          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -d > $GITHUB_WORKSPACE/release.keystore
+          # চাবিটিকে আরও শক্তিশালীভাবে ডিকোড করা
+          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > android/app/release.keystore
           
-          # অটোমেটিক ভার্সন কোড বাড়ানো
+          # চেক করা ফাইলটি তৈরি হয়েছে কি না
+          if [ ! -s android/app/release.keystore ]; then
+            echo "Error: Keystore decoding failed!"
+            exit 1
+          fi
+
+          # অটোমেটিক ভার্সন কোড বাড়ানো (যাতে আপডেট নিতে সুবিধা হয়)
           VERSION_CODE=${{ github.run_number }}
           sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
           echo "Version Code set to: $VERSION_CODE"
 
       - name: Build Android APK (Forced Signing)
         run: |
-          # ফুল পাথ ব্যবহার করে বিল্ড করা
           cd android
           ./gradlew assembleDebug \
-            -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/release.keystore \
+            -Pandroid.injected.signing.store.file=release.keystore \
             -Pandroid.injected.signing.store.password=android123 \
             -Pandroid.injected.signing.key.alias=baki_khata_key \
             -Pandroid.injected.signing.key.password=android123
