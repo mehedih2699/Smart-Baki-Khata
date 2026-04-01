@@ -13,11 +13,9 @@ jobs:
 
       - name: Unzip Project (For Mobile Users)
         run: |
-          # যদি কোনো জিপ ফাইল থাকে তবে সেটি আনজিপ করবে
           if ls *.zip 1> /dev/null 2>&1; then
             echo "Zip file found, unzipping..."
             unzip -o *.zip
-            # যদি জিপের ভেতরে ফোল্ডার থাকে তবে ফাইলগুলো বাইরে নিয়ে আসবে
             if [ ! -f package.json ]; then
               mv */* . 2>/dev/null || true
             fi
@@ -28,7 +26,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22  # এখানে ২০ থেকে বাড়িয়ে ২২ করা হয়েছে
 
       - name: Set up Java
         uses: actions/setup-java@v4
