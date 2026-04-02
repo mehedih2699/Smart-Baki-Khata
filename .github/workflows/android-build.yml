@@ -36,10 +36,10 @@ jobs:
 
       - name: Build Web Project
         run: |
-          # Copy icon to public folder for UI logo
+          # Create public folder if it doesn't exist and copy icon
+          mkdir -p public
           if [ -f "resources/icon.png" ]; then
-            mkdir -p src/public
-            cp resources/icon.png src/public/icon.png
+            cp resources/icon.png public/icon.png
           fi
           npm run build
         env:
@@ -47,11 +47,15 @@ jobs:
 
       - name: Generate Android Assets
         run: |
-          # Ensure resources folder exists and has icon/splash
+          # Create assets folder and copy source files for generation
           if [ -f "resources/icon.png" ] || [ -f "resources/splash.png" ]; then
-            echo "Generating assets..."
-            # Create resources/android if it doesn't exist
-            mkdir -p resources/android
+            echo "Preparing assets for generation..."
+            mkdir -p assets
+            [ -f "resources/icon.png" ] && cp resources/icon.png assets/icon-only.png
+            [ -f "resources/icon.png" ] && cp resources/icon.png assets/icon-foreground.png
+            [ -f "resources/icon.png" ] && cp resources/icon.png assets/icon-background.png
+            [ -f "resources/splash.png" ] && cp resources/splash.png assets/splash.png
+            
             npx @capacitor/assets generate --android
           else
             echo "No icon.png or splash.png found in resources/ folder. Skipping asset generation."
