@@ -1,4 +1,4 @@
-name: Build Android APK (Final Fix with Assets & Updates)
+name: Build Android APK (Icon Fix)
 on:
   push:
     branches: [ main, master ]
@@ -36,7 +36,6 @@ jobs:
 
       - name: Build Web Project
         run: |
-          # Create public folder if it doesn't exist and copy icon
           mkdir -p public
           if [ -f "resources/icon.png" ]; then
             cp resources/icon.png public/icon.png
@@ -45,9 +44,14 @@ jobs:
         env:
           VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
-      - name: Generate Android Assets
+      - name: Capacitor Setup
         run: |
-          # Create assets folder and copy source files for generation
+          npx cap add android || true
+          npx cap sync android
+
+      - name: Generate Android Assets (Icon & Splash)
+        run: |
+          # Create assets folder for generation source
           if [ -f "resources/icon.png" ] || [ -f "resources/splash.png" ]; then
             echo "Preparing assets for generation..."
             mkdir -p assets
@@ -56,33 +60,25 @@ jobs:
             [ -f "resources/icon.png" ] && cp resources/icon.png assets/icon-background.png
             [ -f "resources/splash.png" ] && cp resources/splash.png assets/splash.png
             
+            # Generate assets AFTER android folder is created
             npx @capacitor/assets generate --android
           else
-            echo "No icon.png or splash.png found in resources/ folder. Skipping asset generation."
+            echo "No icon.png or splash.png found in resources/ folder."
           fi
 
-      - name: Capacitor Sync & Versioning
+      - name: Versioning
         run: |
-          npx cap add android || true
-          npx cap sync android
           # Increase version code for updates
           sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" android/app/build.gradle
-          # Update version name to reflect build number
           sed -i "s/versionName \".*\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
 
-      - name: Handle Keystore (Absolute Path Fix)
+      - name: Handle Keystore
         run: |
           mkdir -p ${{ github.workspace }}/keystore_dir
-          
           if [ -f "android-key/release.keystore" ]; then
-            echo "--- USING KEYSTORE FROM YOUR ZIP FILE ---"
             cp android-key/release.keystore ${{ github.workspace }}/keystore_dir/release.keystore
           else
-            echo "--- GENERATING A BRAND NEW MASTER KEYSTORE ---"
             keytool -genkey -v -keystore ${{ github.workspace }}/keystore_dir/release.keystore -alias baki_khata_key -keypass android123 -storepass android123 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Baki Khata, O=Smart, C=BD"
-            
-            mkdir -p android-key
-            cp ${{ github.workspace }}/keystore_dir/release.keystore android-key/release.keystore
           fi
 
       - name: Build Android APK
@@ -94,10 +90,8 @@ jobs:
             -Pandroid.injected.signing.key.alias=baki_khata_key \
             -Pandroid.injected.signing.key.password=android123
 
-      - name: Upload APK & Master Keystore
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Baki-Khata-Pro-Final-Package
-          path: |
-            android/app/build/outputs/apk/debug/app-debug.apk
-            android-key/release.keystore
+          name: Baki-Khata-Pro-Fixed-Icon
+          path: android/app/build/outputs/apk/debug/app-debug.apk
